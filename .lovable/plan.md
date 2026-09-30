@@ -20,6 +20,7 @@ Import the uploaded Cyber Raid game and make the 3D office respond to real-time 
   - Blink deliberately to isolate an already investigated device, with cooldown and progress feedback to avoid accidental actions.
 - Show an investigation report after a successful pinch, including malware family, current malicious activity, affected people/systems, risk level, indicators, and recommended containment.
 - Enlarge the office and its devices, add realistic office/server details, and make active threats visually distinct with attack traffic, alerts, encryption/data-leak effects, and infected-screen activity.
+- Replace the slow idle "next sweep" cycle with a continuous live telemetry feed and shorter, irregular surprise-incident windows so players must react quickly instead of waiting through predictable pauses.
 - Update the briefing and in-game guidance so all gestures and privacy behavior are clear.
 
 ## Reliability and performance
