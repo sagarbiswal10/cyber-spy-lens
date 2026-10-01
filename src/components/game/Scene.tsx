@@ -4,6 +4,8 @@ import { Suspense, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { NETWORK, THREATS } from "@/game/data";
 import { useGame, type NodeState } from "@/game/store";
+import { nodeScreen } from "@/game/screen";
+import { useVision } from "@/game/vision";
 
 const COLORS = { clean: "#55cfe1", isolated: "#68798a", selected: "#ffd36b", shell: "#18242d", screen: "#123e49", floor: "#243137", wall: "#39494d", wood: "#765f47", chair: "#263136" };
 
@@ -61,19 +63,36 @@ function Device({ index }: { index: number }) {
   const phase = useGame((s) => s.phase);
   const group = useRef<THREE.Group>(null);
   const ring = useRef<THREE.Mesh>(null);
+  const projected = useMemo(() => new THREE.Vector3(), []);
   const color = node ? statusColor(node) : COLORS.clean;
-  useFrame(({ clock }) => {
+  useFrame(({ clock, camera }) => {
     const time = clock.elapsedTime;
     if (group.current) group.current.position.y = node?.status === "infected" ? Math.sin(time * 5 + index) * 0.04 : 0;
     if (ring.current) { ring.current.rotation.z = time * 0.45; const scale = selected ? 1.35 : 1 + (node?.status === "infected" ? Math.sin(time * 4) * 0.08 : 0); ring.current.scale.setScalar(scale); }
+    if (group.current) { group.current.getWorldPosition(projected).project(camera); nodeScreen[index] = { x: (projected.x + 1) / 2, y: (1 - projected.y) / 2 }; }
   });
   if (!def || !node) return null;
   return <group position={def.pos} ref={group} onClick={(event) => { if (phase !== "playing") return; event.stopPropagation(); useGame.getState().select(index); }} onPointerOver={() => { document.body.style.cursor = "pointer"; }} onPointerOut={() => { document.body.style.cursor = ""; }}>
     {def.kind === "server" ? <ServerRack accent={color}/> : def.kind === "router" ? <Router accent={color}/> : <Workstation accent={color}/>} 
     <mesh ref={ring} rotation-x={-Math.PI / 2} position={[0, 0.025, 0]}><ringGeometry args={[0.92, 1.03, 32]}/><meshBasicMaterial color={selected ? COLORS.selected : color} transparent opacity={selected ? 0.95 : 0.52} toneMapped={false}/></mesh>
-    {node.status === "infected" && <group position={[0, def.kind === "server" ? 3.05 : 2.25, 0]}><mesh><sphereGeometry args={[0.18 + node.infection * 0.2, 14, 10]}/><meshBasicMaterial color={color} toneMapped={false}/></mesh><pointLight intensity={4} distance={3} color={color}/></group>}
+    {node.status === "infected" && <group position={[0, def.kind === "server" ? 3.05 : 2.25, 0]}><mesh><icosahedronGeometry args={[0.24 + node.infection * 0.26, 1]}/><meshBasicMaterial color={color} wireframe toneMapped={false}/></mesh><pointLight intensity={7} distance={5} color={color}/>{Array.from({ length: 5 }, (_, particle) => <mesh key={particle} position={[Math.sin(particle * 2.1) * (0.55 + node.infection), (particle - 2) * 0.18, Math.cos(particle * 1.7) * 0.55]}><sphereGeometry args={[0.045, 6, 6]}/><meshBasicMaterial color={color} toneMapped={false}/></mesh>)}</group>}
     <Text position={[0, def.kind === "server" ? 2.95 : 2.05, 0]} fontSize={0.3} color={selected ? COLORS.selected : "#d2e2e5"} anchorX="center">{def.label}{node.status === "infected" && node.investigated && node.threat ? `\n${THREATS[node.threat].name}` : ""}</Text>
   </group>;
+}
+
+const VIEW_TARGET = new THREE.Vector3(0, 2.2, 0);
+const DESIRED_CAMERA = new THREE.Vector3();
+
+function CameraDirector() {
+  useFrame(({ camera }, rawDelta) => {
+    const controls = useVision.getState();
+    if (controls.status !== "ready") return;
+    const dt = Math.min(rawDelta, 0.05);
+    DESIRED_CAMERA.setFromSphericalCoords(controls.distance, controls.pitch, controls.yaw).add(VIEW_TARGET);
+    camera.position.lerp(DESIRED_CAMERA, 1 - Math.exp(-7 * dt));
+    camera.lookAt(VIEW_TARGET);
+  });
+  return null;
 }
 
 function NetworkLink({ a, b }: { a: number; b: number }) {
@@ -103,10 +122,10 @@ export function GameScene() {
   return <Canvas shadows dpr={[1, 1.5]} camera={{ position: [0, 18, 25], fov: 48 }} onPointerMissed={() => useGame.getState().select(null)} gl={{ antialias: true }}>
     <color attach="background" args={["#0f1c22"]}/><fog attach="fog" args={["#0f1c22", 26, 55]}/><ambientLight intensity={0.55}/><hemisphereLight args={["#b8d9dd", "#26353a", 0.75]}/><directionalLight position={[10, 16, 8]} intensity={1.5} castShadow shadow-mapSize={[1024, 1024]} shadow-camera-left={-18} shadow-camera-right={18} shadow-camera-top={18} shadow-camera-bottom={-18}/>
     <Environment resolution={64}><Lightformer intensity={2.6} color="#dbe7df" position={[0, 8, 2]} rotation-x={Math.PI / 2} scale={[20, 18, 1]}/><Lightformer intensity={1.2} color="#62b9c5" position={[-12, 4, -4]} rotation-y={Math.PI / 2} scale={[15, 3, 1]}/></Environment>
-    <OfficeShell/>
+    <group scale={1.22}><OfficeShell/>
     {NETWORK.links.map(([a, b]) => <NetworkLink key={`${a}-${b}`} a={a} b={b}/>)}
     <Suspense fallback={null}>{NETWORK.nodes.map((node) => <Device key={node.id} index={node.id}/>)}</Suspense>
-    <FirewallField/><MissionLoop/>
-    <OrbitControls enablePan={false} minDistance={18} maxDistance={31} minPolarAngle={0.62} maxPolarAngle={1.13} minAzimuthAngle={-0.65} maxAzimuthAngle={0.65} target={[0, 1.5, 1]}/>
+    <FirewallField/></group><MissionLoop/><CameraDirector/>
+    <OrbitControls enablePan={false} minDistance={17} maxDistance={46} minPolarAngle={0.42} maxPolarAngle={1.4} target={[0, 2.2, 0]}/>
   </Canvas>;
 }
