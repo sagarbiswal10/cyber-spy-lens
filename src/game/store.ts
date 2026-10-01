@@ -26,6 +26,8 @@ interface GameState {
   spawnIn: number;
   log: LogEntry[];
   lastTip: string | null;
+  reportNode: number | null;
+  telemetry: string;
   endReason: string;
   victory: boolean;
   runId: string;
@@ -37,6 +39,7 @@ interface GameState {
   investigate: () => void;
   isolate: () => void;
   firewall: () => void;
+  dismissReport: () => void;
   tick: (dt: number) => void;
 }
 
@@ -73,13 +76,13 @@ function finish(set: (patch: Partial<GameState>) => void, state: GameState, vict
 export const useGame = create<GameState>((set, get) => ({
   phase: "menu", playerName: "", nodes: fresh(), selected: null, elapsed: 0, integrity: 100, energy: 100,
   firewallFor: 0, score: 0, combo: 1, maxCombo: 1, contained: 0, breaches: 0, nextThreat: 0,
-  spawnIn: OPENING_DELAY, log: [], lastTip: null, endReason: "", victory: false, runId: "",
+  spawnIn: OPENING_DELAY, log: [], lastTip: null, reportNode: null, telemetry: "Monitoring authentication, DNS, email, endpoints, and outbound traffic…", endReason: "", victory: false, runId: "",
   setName: (playerName) => set({ playerName }),
   start: () => {
     sfx.start();
     set({ phase: "playing", nodes: fresh(), selected: null, elapsed: 0, integrity: 100, energy: 100, firewallFor: 0,
       score: 0, combo: 1, maxCombo: 1, contained: 0, breaches: 0, nextThreat: 0, spawnIn: OPENING_DELAY,
-      log: [{ id: ++logId, text: "Shift started. First alert expected shortly.", tone: "info" }], lastTip: null,
+      log: [{ id: ++logId, text: "Live telemetry connected. Stand by for surprise incidents.", tone: "info" }], lastTip: null, reportNode: null,
       endReason: "", victory: false, runId: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}` });
   },
   toMenu: () => set({ phase: "menu", selected: null }),
@@ -102,7 +105,7 @@ export const useGame = create<GameState>((set, get) => ({
     nodes[s.selected] = { ...node, investigated: true, infection: Math.max(0.05, node.infection - 0.12) };
     const threat = node.threat ? THREATS[node.threat] : null;
     if (!threat) return;
-    set({ nodes, score: s.score + 80 * s.combo, lastTip: threat.tip, log: push(s.log, `${label}: identified ${threat.name}. Isolation unlocked.`, "info") });
+    set({ nodes, reportNode: s.selected, score: s.score + 80 * s.combo, lastTip: threat.tip, log: push(s.log, `${label}: identified ${threat.name}. Isolation unlocked.`, "info") });
   },
   isolate: () => {
     const s = get();
@@ -117,7 +120,7 @@ export const useGame = create<GameState>((set, get) => ({
     const gain = Math.round((260 + (1 - node.infection) * 240) * s.combo);
     const combo = Math.min(6, s.combo + 1);
     const contained = s.contained + 1;
-    set({ nodes, selected: null, score: s.score + gain, combo, maxCombo: Math.max(s.maxCombo, combo), contained,
+    set({ nodes, selected: null, reportNode: null, score: s.score + gain, combo, maxCombo: Math.max(s.maxCombo, combo), contained,
       energy: Math.min(100, s.energy + 10), spawnIn: WAVE_DELAY,
       log: push(s.log, `${label}: threat contained. +${gain}. Next sweep in ${WAVE_DELAY}s.`, "good") });
     if (contained >= TOTAL_THREATS && s.nextThreat >= TOTAL_THREATS) finish(set, { ...s, nodes, contained }, true, "All five threats contained. Office network secured.");
@@ -129,6 +132,7 @@ export const useGame = create<GameState>((set, get) => ({
     sfx.firewall();
     set({ energy: s.energy - 35, firewallFor: 8, log: push(s.log, "Firewall active for 8 seconds. Threat growth slowed.", "good") });
   },
+  dismissReport: () => set({ reportNode: null }),
   tick: (dt) => {
     const s = get();
     if (s.phase !== "playing") return;
@@ -176,7 +180,9 @@ export const useGame = create<GameState>((set, get) => ({
       }
     }
 
+    const feeds = ["AUTH · impossible travel checks streaming", "DNS · beacon patterns under analysis", "EDR · process trees updating", "MAIL · attachment sandbox active", "DLP · outbound payloads inspected", "FIREWALL · sessions correlated live"];
     const patch: Partial<GameState> = { nodes, integrity: Math.max(0, integrity), log, breaches, spawnIn,
+      telemetry: feeds[Math.floor((s.elapsed + dt) / 1.8) % feeds.length] ?? feeds[0],
       nextThreat, combo, elapsed: s.elapsed + dt, firewallFor: Math.max(0, s.firewallFor - dt), energy: Math.min(100, s.energy + dt * 1.5) };
     if (integrity <= 0) finish(set, { ...s, ...patch } as GameState, false, "Network compromised. The shift ended before containment.");
     else set(patch);

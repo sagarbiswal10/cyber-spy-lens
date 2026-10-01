@@ -1,9 +1,10 @@
 import { useEffect } from "react";
-import { Bug, CirclePause, Flame, LockKeyhole, Search, ShieldCheck } from "lucide-react";
+import { Bug, CirclePause, Flame, LockKeyhole, Search, ShieldCheck, X, ZoomIn, ZoomOut } from "lucide-react";
 import { NETWORK, THREATS, TOTAL_THREATS, rankFor } from "@/game/data";
 import { threatLevel, useGame } from "@/game/store";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useVision } from "@/game/vision";
 
 function Bar({ label, value, tone }: { label: string; value: number; tone: string }) {
   return <div className="min-w-28 flex-1"><div className="mb-1 flex justify-between text-[10px] uppercase text-muted-foreground"><span>{label}</span><span className="text-foreground">{Math.round(value)}%</span></div><div className="h-1.5 overflow-hidden rounded-sm bg-muted"><div className={cn("h-full transition-[width] duration-300", tone)} style={{ width: `${value}%` }} /></div></div>;
@@ -14,6 +15,9 @@ export function HUD() {
   const selectedNode = s.selected === null ? null : s.nodes[s.selected];
   const selectedDef = s.selected === null ? null : NETWORK.nodes[s.selected];
   const active = s.nodes.filter((node) => node.status === "infected").length;
+  const reportNode = s.reportNode === null ? null : s.nodes[s.reportNode];
+  const reportDef = s.reportNode === null ? null : NETWORK.nodes[s.reportNode];
+  const report = reportNode?.threat ? THREATS[reportNode.threat] : null;
   const minute = Math.floor(s.elapsed / 60);
   const second = String(Math.floor(s.elapsed % 60)).padStart(2, "0");
 
@@ -42,8 +46,9 @@ export function HUD() {
     </div>
 
     <div className="pointer-events-none absolute left-1/2 top-24 w-[min(92vw,420px)] -translate-x-1/2 text-center">
-      <div className="mission-strip"><span>INCIDENTS {s.contained}/{TOTAL_THREATS}</span><strong>{active ? `${active} ACTIVE` : s.nextThreat < TOTAL_THREATS ? `NEXT SWEEP ${Math.max(0, Math.ceil(s.spawnIn))}s` : "CLEAR"}</strong><span>{minute}:{second}</span></div>
+      <div className="mission-strip"><span>INCIDENTS {s.contained}/{TOTAL_THREATS}</span><strong>{active ? `${active} ACTIVE · RESPOND` : "LIVE MONITORING"}</strong><span>{minute}:{second}</span></div><div className="telemetry-ticker"><span className="telemetry-pulse"/> {s.telemetry}</div>
     </div>
+    <div className="pointer-events-auto absolute bottom-32 right-3 hidden flex-col gap-2 sm:flex"><Button size="icon" variant="secondary" onClick={() => useVision.getState().zoomBy(-4)} aria-label="Zoom in" title="Zoom in"><ZoomIn/></Button><Button size="icon" variant="secondary" onClick={() => useVision.getState().zoomBy(4)} aria-label="Zoom out" title="Zoom out"><ZoomOut/></Button></div>
 
     <div className="flex items-end justify-between gap-3">
       <div className="panel hidden w-80 px-3 py-2 text-xs lg:block"><div className="mb-1 text-[10px] uppercase text-muted-foreground">Operations log</div>{s.log.slice(0, 4).map((item) => <div key={item.id} className={cn("animate-fade-in", item.tone === "good" && "text-success", item.tone === "bad" && "text-destructive")}>› {item.text}</div>)}{s.lastTip && <div className="mt-2 border-t border-border pt-2 text-[11px] text-accent">INTEL: {s.lastTip}</div>}</div>
@@ -61,5 +66,8 @@ export function HUD() {
       </div>
       <div className="hidden w-80 justify-end lg:flex"><div className="panel flex items-center gap-3 px-3 py-2 text-xs"><Bug className={active ? "text-destructive" : "text-success"}/><span>{active ? "Respond carefully: scan, then isolate." : "Room scan in progress."}</span>{s.firewallFor > 0 && <Flame className="text-success" />}</div></div>
     </div>
+    {report && reportDef && <div className="pointer-events-auto absolute inset-0 z-30 flex items-center justify-center bg-background/35 p-4 backdrop-blur-[2px]"><section className="threat-report w-full max-w-xl p-5 sm:p-6"><div className="flex items-start justify-between gap-4"><div><div className="text-[10px] uppercase text-destructive">Live investigation report · {report.severity}</div><h2 className="mt-1 font-display text-2xl text-primary">{report.name}</h2><p className="text-xs text-muted-foreground">{report.category} detected on {reportDef.label}</p></div><Button size="icon" variant="ghost" onClick={s.dismissReport} aria-label="Close report"><X/></Button></div><div className="mt-5 grid gap-4 sm:grid-cols-2"><ReportField label="Current activity" text={report.activity}/><ReportField label="Who is affected" text={report.affected}/><div className="sm:col-span-2"><div className="mb-2 text-[10px] uppercase text-muted-foreground">Live indicators</div><div className="grid gap-2 sm:grid-cols-3">{report.indicators.map((indicator) => <div key={indicator} className="indicator-row"><span className="telemetry-pulse"/>{indicator}</div>)}</div></div><ReportField label="Containment guidance" text={report.tip}/></div><div className="mt-5 flex justify-end gap-2"><Button variant="outline" onClick={s.dismissReport}>Keep monitoring</Button><Button onClick={s.isolate}><LockKeyhole/>Isolate now</Button></div></section></div>}
   </div>;
 }
+
+function ReportField({ label, text }: { label: string; text: string }) { return <div><div className="mb-1 text-[10px] uppercase text-muted-foreground">{label}</div><p className="text-xs leading-5 text-foreground">{text}</p></div>; }
